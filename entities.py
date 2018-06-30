@@ -15,7 +15,7 @@ class Spacecraft(object):
 		self.space=space
 		self.image=images
 		#self.size=Vector2(images.get_size())
-		self.position=Vector2(0,0)#Vector2((space.size.x-self.size.x)/2,space.size.y)
+		self.position=Vector2(500,330)#Vector2((space.size.x-self.size.x)/2,space.size.y)
 		self.direction=Vector2(0,0)
 		self.weapons={}
 		self.weapon_id=0
@@ -136,9 +136,9 @@ class Space(object):
 		self.time+=time
 		enemys=self.enemies.copy()
 		bullets=self.bullets.copy()
-
 		if not self.ship.dead:
-			self.set_star()
+			if self.time%1>0.5:
+				self.set_star()
 			for star in self.stars:
 				star.next_y=star.y+time*star.speed
 			for key in enemys.keys():
@@ -149,8 +149,22 @@ class Space(object):
 			#self.FSM.think()
 	def display(self,surface):
 		surface.blit(self.background,(0,0))
+		#awesome background
+
 		for star in self.stars:
-			pygame.draw.aaline(surface,(255,255,255),(star.x, star.next_y),(star.x, star.y+1))
+			if self.ship.position.y<=star.y:
+				G=100
+				R=255
+				B=100
+			else:
+				G=100
+				B=255
+				R=100
+			if star.speed<=200:
+				R=255
+				G=255
+				B=255
+			pygame.draw.aaline(surface,(R,G,B),(star.x, star.next_y),(star.x, star.y-1))
 			star.y=star.next_y
 		
 		
@@ -179,9 +193,9 @@ class Space(object):
 		self.chapter=chapter
 		
 	def set_star(self):
-		x=float(random.randint(0,1080))
+		x=random.randint(0,1080)
 		y=0
-		speed=float(random.randint(10,110+int(self.ship.velocity)))
+		speed=random.randint(10,110+int(self.ship.velocity))
 		self.stars.append(Star(x,y,speed))
 		self.stars=list(filter(del_star,self.stars))
 		
