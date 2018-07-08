@@ -3,73 +3,183 @@ import pygame
 from pygame.locals import *
 from sys import exit
 import random
-
+import math
 from FSM import *
 from vector import Vector2
 
-
+space_size=(780,570)
 #********Frame of ship********
 
 class Spacecraft(object):
 	def __init__(self,images,space):
 		self.space=space
 		self.image=images
-		#self.size=Vector2(images.get_size())
-		self.position=Vector2(500,330)#Vector2((space.size.x-self.size.x)/2,space.size.y)
+		self.size=Vector2(images.get_size())
 		self.direction=Vector2(0,0)
-		self.weapons={}
-		self.weapon_id=0
+		self.weapons=[]	
+		self.weapon_max=4
+		self.weapon_shift=Vector2(0,5)
+		self.speed_max=200
 		self.load_Max=1000
 		self.load=1000
 		self.engine=None #speed range, acceleration
+		self.battery=None #electricity power
 		self.tank=1000 #current tank weight
 		self.tank_Max=1000#full tank weight
 		self.fuel=None #energy type and parameters
-		self.shields={}
-		self.shieid_id=0
+		self.shields=[None,None,None] # physical, electromagnetic, dark field
+		self.shieid_id=0					
+		self.routine_power=40 #unit: power
+		self.hold_breath=10 #hp decrement after out of power
+		self.radius=math.sqrt(self.size*self.size)/2-5
+		self.reset()
+	def reset(self):		
+		self.position=Vector2(self.space.size.x/2,self.space.size.y-250)
+		self.speed=self.speed_max
 		self.hp=100
-		self.velocity=0
-		self.speed=200
 		self.distance=0
-		self.time=0
+		self.time=0	
+		self.velocity=0
+		self.weapon_id=0
+		self.power_require=self.routine_power
+		self.weapon_power=0
+		self.shield_power=0
+		self.power=0
+		self.weapon_weight=0
+		self.shield_weight=0
+		#flags
 		self.dead=False
-		self.consume_rate=2
+		self.biu=False #fire
+		self.shield_up=[False,False,False] 		
+		self.out_of_energy=False #energy
+		self.out_of_power=False #begin lose hp
+		self.disable_weapon=True
+		self.disable_move=False
+		self.disable_shield=[True,True,True]
+	def add_battery(self,battery):
+		self.battery=battery
 	def add_engine(self,engine):
 		self.engine=engine
 	def add_weapon(self,weapon):
-		self.weapons[self.weapon_id]=weapon
-		self.weapon_id+=1
+		weapon.id=len(self.weapons)
+		self.weapons.append(weapon)
+		self.weapon_weight+=weapon.weight
 	def add_shield(self,shield):
-		self.shields[self.shield_id]=shield
-		self.shield_id+=1
-	def fill_tank(self,fuel):
+		self.shields[shield.type]=shield
+		self.shield_weight+=shield.weight
+	def add_fuel(self,fuel):
 		self.fuel=fuel
+	def fill_tank(self):	
 		self.tank=self.tank_Max
 	def move(self,time):
+		if self.disable_move:
+			self.direction=Vector2(0,0)-self.direction
+			self.speed=self.speed_max*self.power/self.routine_power
 		self.position=self.position+self.direction*time*self.speed
-	def fire(self,time):
-		for weapon in self.weapons.copy().values():
-			weapon.process(time)	
-	def consume(self,time):
+	def breath(self,time):
+		if self.out_of_power:
+			self.hp-=self.hold_breath*time
+		self.hp=max(0,self.hp)
+	def consume(self,time):		
 		transport=self.engine.power*time
-		routine=self.consume_rate*time*self.fuel.weight
-		self.tank=self.tank-routine-transport
-		self.load=self.tank
-	def process(self,time):
+		routine=self.power/self.fuel.power*time*self.fuel.weight 
+		self.tank=max(self.tank-routine-transport,0)		
+	def switch_on(self):		
+		if self.biu and self.weapons:
+			self.weapon_power=self.weapons[self.weapon_id].power
+			self.disable_weapon=False
+		else:
+			self.disable_weapon=True
+			self.weapon_power=0	
+			
+		self.shield_power=0
+		for i in range(len(self.shields)):
+			if self.shield_up[i]:
+				self.shield_power+=self.shields[i].power
+				self.disable_shield[i]=False
+			else:
+				self.disable_shield[i]=True
+				
+		self.power_require=self.routine_power+self.weapon_power+self.shield_power
+		self.power=min(self.battery.output,self.power_require)	
+		self.load=self.tank+self.weapon_weight+self.shield_weight
+
+	def process(self,time):	
+		self.switch_on()
+		self.check()
 		self.engine.work(time)
 		self.move(time)
-		self.fire(time)
-		self.consume(time)
-		self.check()
-		
+		self.breath(time)
+		if not self.disable_weapon:
+			for weapon in self.weapons:
+				weapon.process(time)
+		for i in range(len(self.shields)):
+			if not self.disable_shield[i]:
+				self.shields[i].process(time)
+
+		self.battery.process(time)	
+		self.consume(time)		
 		self.distance+=self.velocity*time
-		self.time+=time
-	def display(self,surface):
-		surface.blit(self.image,self.position)
-	def check(self):	
-		if self.tank<=0 or self.hp<=0:
+		self.time+=time		
+	def display(self,surface):	
+		surface.blit(self.image,self.position-self.size/2)
+		if self.weapons and not self.disable_weapon :
+			self.weapons[self.weapon_id].display(surface)
+		for i in range(len(self.shields)):
+			if not self.disable_shield[i]:
+				self.shields[i].display(surface)
+	def check(self):
+		if self.tank<=0:
+			self.out_of_energy=True
+		if self.hp<=0:
 			self.dead=True
-		
+		if self.shields[0]:
+			self.shield_up[0]=True	
+		#power system
+		if self.power<self.routine_power+self.weapon_power:
+			self.disable_weapon=True
+			if self.power<self.routine_power:
+				self.disable_move=True
+				if self.power<=0:
+					self.out_of_power=True #begin dying
+		if self.power<self.routine_power+self.weapon_power+self.shield_power:
+			for i in range(1,len(self.shields)):
+				self.disable_shield[i]=True
+		#shield charging
+		if self.disable_shield[1] and self.shields[1]:
+			self.shields[1].hp=0
+		#boundary	
+		if self.position.x>=self.space.size.x-self.size.x/2-10 and self.direction.x==1 \
+		or self.position.x<=self.size.x/2+10 and self.direction.x==-1:
+			self.direction.x=0
+		if self.position.y>=self.space.panel.position.y-self.size.y/2-10 and self.direction.y==1 \
+		or self.position.y<=self.size.y/2+10 and self.direction.y==-1:
+			self.direction.y=0
+
+			
+
+#battery
+class Battery(object):
+	def __init__(self,ship,data):
+		self.name=data[0]
+		self.power=data[1]
+		self.output=data[1]
+		self.life_max=data[2]
+		self.life=800 #times
+		self.percent=100
+		self.decay=5
+		self.ship=ship
+	def process(self,time):
+		self.life-=time
+		self.percent=self.life/self.life_max
+		if self.ship.out_of_energy:
+			self.output=self.ship.power-self.decay*time
+		else:	
+			self.output=self.percent*self.power
+		self.output=max(0,self.output)
+	def repair(self):
+		self.life=self.life_max
+	
 #engine 		
 class Engine(object):
 	def __init__(self,craft,speed,name,gears,fuel_list):
@@ -83,12 +193,16 @@ class Engine(object):
 		self.fuel_type=fuel_list
 		self.acc_rate=100
 		self.keep_rate=1 #lower better
+
 	def work(self,time):
 	#speed
-		if self.ship.velocity<=self.speed_H: 
-			self.a=self.gear_box[self.gear_id]*self.ship.fuel.power/self.ship.load*self.acc_rate #parameter
+		if not self.ship.out_of_energy:
+			if self.ship.velocity<=self.speed_H: 
+				self.a=self.gear_box[self.gear_id]*self.ship.fuel.power/self.ship.load*self.acc_rate #parameter
+			else:
+				self.a=0	
 		else:
-			self.a=0		
+			self.a=-10
 		self.ship.velocity+=self.a*time
 		self.ship.velocity=min(self.ship.velocity,self.speed_H)
 		self.ship.velocity=max(self.ship.velocity,0) #make sure the V is within the range
@@ -96,27 +210,148 @@ class Engine(object):
 		power_acc=abs(self.gear_box[self.gear_id])*self.ship.fuel.weight # each gear consume a constant number of fuel
 		power_keep=((self.ship.velocity/100)**2)*self.keep_rate/self.ship.fuel.power*self.ship.fuel.weight #higher the speed, higher the power to keep the speed
 		self.power=power_acc+power_keep
-	
+# fuel
 class Energy(object):
 	def __init__(self,data):
 		self.type=data[0]
 		self.cost=data[1]
 		self.power=data[2]
 		self.weight=data[3]
-
+#weapons
 class Weapon(object):
-	pass
+	def __init__(self,space,data):
+		self.image=data[0]
+		self.name=data[1]
+		self.cd=data[2]
+		self.bullet_damage=data[3]
+		self.bullet_image=data[4]
+		self.bullet_speed=data[5]
+		self.power=data[6]
+		self.icon=data[7]
+		self.weight=data[8]
+		self.ammo_max=data[9]
+		self.ammo=data[9]
+		self.time=data[2]
+		self.space=space
+		self.ship=space.ship
+		self.ready=True
+		self.fire=False
+		self.position=Vector2(0,0)
+		self.id=0
+	def reload(self):
+		self.ammo=self.ammo_max
+	def display(self,surface):
+		mouse_position=Vector2(pygame.mouse.get_pos())	#rotate
+		face_to=mouse_position-self.position
+		face_to.unit()
+		angle=math.asin(face_to.x)
+		angle=math.degrees(angle)-180
+		if face_to.y<0:
+			angle=180-angle
+		image_rotate=pygame.transform.rotate(self.image,angle)
+		position=self.position-Vector2(image_rotate.get_size())/2
+		surface.blit(image_rotate,position)
+	def move(self):
+		self.position=self.ship.position+self.ship.weapon_shift
+	def check(self):
+		if self.time>self.cd:
+			self.ready=True
+		else:
+			self.ready=False
+	def shoot(self):
+		self.fire=False
+		self.time=0
+		position=self.position
+		direction=Vector2(pygame.mouse.get_pos())-self.position
+		direction.unit()
+		data=[self.bullet_image, self.bullet_speed, position, self.space, self.bullet_damage, direction]
+		self.space.add_bullet(Bullet(data))		
+	def process(self,time):
+		self.time+=time
+		self.move()
+		self.check()
+		if self.ready and self.fire and self.ammo:
+			self.shoot()
+			self.ammo-=1
+#bullets		
+class Bullet(object):		
+	def __init__(self,data):
+		self.image=data[0]
+		self.speed=data[1]
+		self.position=data[2]
+		self.space=data[3]
+		self.id=0
+		self.name='biu'
+		self.damage=data[4]
+		self.direction=data[5]
+	def move(self,time):
+		self.position+=self.speed*self.direction*time
+	def check(self):
+		if self.position[1]<0 or self.position[1]>space_size[1]\
+		or self.position[0]<0 or self.position[0]>space_size[0]:
+			self.space.delete_bullet(self.id)
+		else:
+			self.hit()		
+	def display(self,surface):
+		surface.blit(self.image,self.position-Vector2(self.image.get_size())/2)	
+	def process(self,time):
+		self.check()
+		self.move(time)
+	def hit(self):
+		for enemy in self.space.enemies.copy().values():
+			if self.position[0]>=enemy.position[0]-enemy.image.get_width()/2 \
+			and self.position[0]<=enemy.position[0]+enemy.image.get_width()/2 \
+			and self.position[1]<=enemy.position[1]+enemy.image.get_height()/2 \
+			and self.position[1]<=enemy.position[1]-enemy.image.get_height()/2:
+				self.space.delete_bullet(self.id)
+				self.space.enemies[enemy.id].hp=max(0,self.space.enemies[enemy.id].hp-self.damage)
+				break		
+		
+#shield		
 class Shield(object):
-	pass
+	def __init__(self,ship,data):
+		self.ship=ship
+		self.radius=0
+		self.image=data[0]
+		self.type=data[1]
+		self.weight=data[2]
+		self.hp_max=data[3]
+		self.hp=data[3]
+		self.effect=data[4] #0~1
+		self.power=data[5]
+		if self.type==1:
+			self.charge=data[6]/100 #percent per second 
+			self.icon=data[7]
+			self.radius=(self.image.get_width()+self.image.get_height())/4
+			
+	def display(self,surface):		
+		x=int(self.ship.position.x)
+		y=int(self.ship.position.y)
+		if self.type==0:
+			pygame.draw.circle(surface,(255,255,255),(x,y),int(self.ship.radius),1)
+		else:
+			if int(self.hp/self.hp_max*100)%4<2:
+				position=self.ship.position-Vector2(self.image.get_size())/2
+				surface.blit(self.image,position)
+	def process(self,time):
+		if self.type==1:
+			self.hp+=self.charge*self.hp_max*time
+			
+		self.hp=min(self.hp,self.hp_max)
+		self.hp=max(self.hp,0)
+
+		
+		
 		
 #********Frame of Space*********	
 	
 class Space(object):
 	def __init__(self):
-		self.background=pygame.surface.Surface((1080,720)).convert()
+		self.background=pygame.surface.Surface((780,720)).convert()
 		self.background.fill((0,0,0))
 		self.time=0
-		self.chapter=None
+		self.size=Vector2(780,720)
+		self.chapter=Chapter(0)
 		self.position=(0,0)
 		self.panel=None
 		self.ship=None
@@ -126,18 +361,19 @@ class Space(object):
 		self.enemy_id=0
 		self.FSM=FSM()
 		self.stars=[]
+		self.set_universe(Chapter(0))
 	def reset(self):
 		self.enemys={}
 		self.bullets={}
 		self.bullet_id=0
 		self.enemy_id=0
-		self.panel.reset()
+		#self.panel.reset()
 	def process(self,time):
 		self.time+=time
 		enemys=self.enemies.copy()
 		bullets=self.bullets.copy()
 		if not self.ship.dead:
-			if self.time%1>0.5:
+			if random.randint(1,3)==1:
 				self.set_star()
 			for star in self.stars:
 				star.next_y=star.y+time*star.speed
@@ -147,34 +383,34 @@ class Space(object):
 				self.bullets[key].process(time)
 			self.ship.process(time)
 			#self.FSM.think()
+
 	def display(self,surface):
 		surface.blit(self.background,(0,0))
 		#awesome background
-
 		for star in self.stars:
 			if self.ship.position.y<=star.y:
-				G=100
+				G=150
 				R=255
-				B=100
+				B=150
 			else:
-				G=100
+				G=150
 				B=255
-				R=100
+				R=150
 			if star.speed<=200:
 				R=255
 				G=255
 				B=255
 			pygame.draw.aaline(surface,(R,G,B),(star.x, star.next_y),(star.x, star.y-1))
 			star.y=star.next_y
-		
-		
-		
 		for enemy in self.enemies.values():
 			enemy.display(surface)
 		for bullet in self.bullets.values():
 			bullet.display(surface)
+			
 		self.ship.display(surface)		
-		#self.panel.display(surface)
+		self.panel.display(surface)
+	def add_panel(self,panel):
+		self.panel=panel
 	def add_enemy(self,enemy):
 		self.enemies[self.enemy_id]=enemy
 		enemy.id=self.enemy_id
@@ -186,24 +422,20 @@ class Space(object):
 	def delete_enemy(self,id):
 		del self.enemies[id]
 	def delete_bullet(self,id):
-		del self.bullets[id]
-				
+		del self.bullets[id]			
 	def set_universe(self,chapter):
 		self.reset()
 		self.chapter=chapter
 		
 	def set_star(self):
-		x=random.randint(0,1080)
+		x=random.randint(0,self.size.x)
 		y=0
 		speed=random.randint(10,110+int(self.ship.velocity))
 		self.stars.append(Star(x,y,speed))
-		self.stars=list(filter(del_star,self.stars))
-		
-		
-		
-#filter function		
-def del_star(star):
-	return star.y<720
+		self.stars=list(filter(self.del_star,self.stars))		
+	#filter function		
+	def del_star(self,star):
+		return star.y<min(self.size.y,self.panel.position.y)
 #stars in background 
 class Star(object):
 	def __init__(self,x,y,speed):
@@ -212,9 +444,256 @@ class Star(object):
 		self.speed=speed
 		self.next_y=y
 
+#Panel
+class Panel(object):
+	def __init__(self,space,font):
+		self.space=space
+		self.size=Vector2(780,160)
+		self.position=space.size-self.size
+		self.background=pygame.surface.Surface(self.size).convert()
+		self.background.fill((245,245,235))
+		self.speed=50
+		self.font=font
+	def move(self,time):
+		self.position+=self.speed*Vector2(0,1)
+	def display(self,surface):
+		surface.blit(self.background,self.position)
+		pygame.draw.rect(surface,(150,150,150),(self.position,self.size),5)
+
+		#gear		
+		num=len(self.space.ship.engine.gear_box)
+		id=self.space.ship.engine.gear_id
+		bar=(20,110)
+		x=30
+		pygame.draw.rect(surface,(160,238,225),((x,590),bar),0)
+		for i in range(num):
+			y=690-90/(num-1)*i
+			pygame.draw.rect(surface,(0,0,0),((x+5,y),(10,2)),1)
+			if id==i:
+				pygame.draw.rect(surface,(150,102,73),((x-5,y-3),(30,6)),0)		
+		if id<1: # 3 level
+			info='R'
+		elif id==1:
+			info='N'
+		else:
+			info='A'+str(id-1)
+		Gear=self.font.render('Gear: '+info,True,(0,0,0))
+		surface.blit(Gear,self.position+(5,5))
+		#tank
+		x=130
+		y=590
+		percent=self.space.ship.tank/self.space.ship.tank_Max*100
+		bar_back=(100,20)
+		bar_fill=(percent,20)
+		pygame.draw.rect(surface,(230,228,192),((x,y),bar_fill),0)
+		pygame.draw.rect(surface,(0,0,0),((x,y),bar_back),2)
+		Text=self.font.render('Tank:',True,(0,0,0))
+		percent=self.font.render('%'+str(format(percent,'0.1f')),True,(0,0,0))
+		surface.blit(Text,(x-Text.get_width(),y))
+		surface.blit(percent,(x+50-percent.get_width()/2,y+1))
+		#battery system
+		x=130
+		y=620
+		percent=self.space.ship.power/self.space.ship.battery.power*100
+		bar_fill=(percent,20)
+		lock=100-self.space.ship.battery.percent*100
+		bar_shade=(lock,20)
+		pygame.draw.rect(surface,(150,150,150),((x+100-lock,y),bar_shade),0)
+		pygame.draw.rect(surface,(192,247,252),((x,y),bar_fill),0)
+		pygame.draw.rect(surface,(0,0,0),((x,y),bar_back),2)
+		Text=self.font.render('Power:',True,(0,0,0))
+		percent=self.font.render('%'+str(format(percent,'0.1f')),True,(0,0,0))
+		surface.blit(Text,(x-Text.get_width(),y))
+		surface.blit(percent,(x+50-percent.get_width()/2,y+1))	
+		#hp
+		x=130
+		y=650
+		percent=self.space.ship.hp
+		bar_fill=(percent,20)
+		pygame.draw.rect(surface,(255,176,168),((x,y),bar_fill),0)
+		pygame.draw.rect(surface,(0,0,0),((x,y),bar_back),2)
+		Text=self.font.render('HP:',True,(0,0,0))
+		percent=self.font.render('%'+str(format(percent,'0.1f')),True,(0,0,0))
+		surface.blit(Text,(x-Text.get_width(),y))
+		surface.blit(percent,(x+50-percent.get_width()/2,y+1))
+		#armor:shield[0]
+		if self.space.ship.shield_up[0]:
+			x=130
+			y=680
+			percent=self.space.ship.shields[0].hp/self.space.ship.shields[0].hp_max*100
+			bar_fill=(percent,20)
+			pygame.draw.rect(surface,(172,248,211),((x,y),bar_fill),0)
+			pygame.draw.rect(surface,(0,0,0),((x,y),bar_back),2)
+			Text=self.font.render('Armor:',True,(0,0,0))
+			percent=self.font.render('%'+str(format(percent,'0.1f')),True,(0,0,0))
+			surface.blit(Text,(x-Text.get_width(),y))
+			surface.blit(percent,(x+50-percent.get_width()/2,y+1))
+		#weapons
+		x=260
+		y=560
+		if not self.space.ship.disable_weapon:
+			weapon_name=self.space.ship.weapons[self.space.ship.weapon_id].name
+			ammo=self.space.ship.weapons[self.space.ship.weapon_id].ammo
+			Text=self.font.render('Ammo:'+str(ammo),True,(0,0,0))
+			surface.blit(Text,(x,y+62))
+		else:
+			weapon_name='Locked'
+		Text=self.font.render('Weapon:'+weapon_name,True,(0,0,0))
+		surface.blit(Text,(x,y))
+		bar=(40,40)		
+		for id in range(self.space.ship.weapon_max):	#cool down effect
+			if id<len(self.space.ship.weapons):
+				color=(200,200,200)
+				if id==self.space.ship.weapon_id and self.space.ship.biu:
+					if not self.space.ship.disable_weapon:
+						color=(255,255,255)
+					pygame.draw.rect(surface,(240,230,140),((x-3,y+17),bar+Vector2(6,6)),5)				
+				if self.space.ship.weapons[id].time<self.space.ship.weapons[id].cd:
+					O2=(x+20,y+40)
+					O1=(x+20,y+20)
+					TR=(x+40,y+20)
+					BR=(x+40,y+60)
+					BL=(x,y+60)
+					TL=(x,y+20)
+					percent=self.space.ship.weapons[id].time/self.space.ship.weapons[id].cd
+					angle=percent*math.pi*2
+					if percent<0.125:
+						point=(x+20+20*math.tan(angle),y+20)
+						point_list=(O1,O2,point,TR,BR,BL,TL)
+					elif percent<0.375:
+						point=(x+40,y+20+20*(1-1/math.tan(angle)))
+						point_list=(O1,O2,point,BR,BL,TL)
+					elif percent<0.625:
+						point=(x+20-20*math.tan(angle),y+60)
+						point_list=(O1,O2,point,BL,TL)		
+					elif percent<0.875:
+						point=(x,y+40+20/math.tan(angle))
+						point_list=(O1,O2,point,TL)
+					else:
+						point=(x+20+20*math.tan(angle),y+20)
+						point_list=(O1,O2,point)
+					pygame.draw.rect(surface,(200,200,200),((x,y+20),bar),0)
+					surface.blit(self.space.ship.weapons[id].icon,(x,y+20))
+					pygame.draw.polygon(surface,(224,255,255),point_list)
+				else:
+					pygame.draw.rect(surface,color,((x,y+20),bar),0)
+					surface.blit(self.space.ship.weapons[id].icon,(x,y+20))					
+				pygame.draw.rect(surface,(0,0,0),((x,y+20),bar),2)
+			else:
+				color=(255,255,255)				
+				pygame.draw.rect(surface,color,((x,y+20),bar),0)
+				pygame.draw.rect(surface,(0,0,0),((x,y+20),bar),2)
+				pygame.draw.circle(surface,(255,0,0),(x+20,y+40),18,4)
+				pygame.draw.line(surface,(255,0,0),(x+10,y+30),(x+30,y+50),5)
+			x+=60		
+		
+		#shields
+		x=260
+		y=645		
+			#label
+		Text=self.font.render('Shield:',True,(0,0,0))
+		if self.space.ship.shields[1]:
+			if self.space.ship.shield_up[1] and not self.space.ship.disable_shield[1]:				
+				percent=self.space.ship.shields[1].hp/self.space.ship.shields[1].hp_max*100
+				bar=(100,15)
+				bar_fill=(percent,15)
+				pygame.draw.rect(surface,(148,251,240),((x+70,y),bar_fill),0)
+				pygame.draw.rect(surface,(0,0,0),((x+70,y),bar),1)
+			else:
+				if self.space.ship.shield_up[1]:
+					Text=self.font.render('Shield:Charging...',True,(0,0,0))
+				else:
+					Text=self.font.render('Shield:OFF',True,(0,0,0))
+		else:
+			Text=self.font.render('Shield:Unequipped',True,(0,0,0))
+		surface.blit(Text,(x,y))
+			#icon
+		box=(40,40)
+		for i in range(1,len(self.space.ship.shields)):
+			if self.space.ship.shields[i]:
+				if self.space.ship.shield_up[i] and not self.space.ship.disable_shield[i]:
+					pygame.draw.rect(surface,(255,255,255),((x,y+20),box),0)
+					pygame.draw.rect(surface,(255,255,100),((x,y+20),box),4)
+				else:
+					pygame.draw.rect(surface,(200,200,200),((x,y+20),box),0)	
+				surface.blit(self.space.ship.shields[i].icon,(x,y+20))
+			else: # disabled
+				color=(255,255,255)
+				pygame.draw.rect(surface,color,((x,y+20),box),0)
+				pygame.draw.circle(surface,(255,0,0),(x+20,y+40),18,4)
+				pygame.draw.line(surface,(255,0,0),(x+20-10,y+40-10),(x+20+10,y+40+10),5)
+			pygame.draw.rect(surface,(150,150,150),((x,y+20),box),3)
+			pygame.draw.rect(surface,(220,220,220),((x,y+20),box),2)
+			x+=85
+		#distance remain
+		distance_remain=format(max(0,self.space.chapter.distance-self.space.ship.distance),'0.1f')
+		Distance=self.font.render('Distance:'+str(distance_remain),True,(0,0,0))
+		surface.blit(Distance,self.position+(600,0))		
+		#speed
+		x=150
+		y=670
+		v=format(self.space.ship.velocity,'0.1f')
+		Speed=self.font.render('Speed:'+str(v),True,(0,0,0))
+		surface.blit(Speed,self.position+(600,30))		
+		#weight
+		weight=format(self.space.ship.load,'0.1f')
+		Speed=self.font.render('weight:'+str(weight),True,(0,0,0))
+		surface.blit(Speed,self.position+(600,60))			
+		
+#***********Frame of chapter***********	
+
+class Chapter(object):
+	def __init__(self,data):
+		self.data=data #including distance, enemy info, chapter difficulty(type)
+		self.FSM=FSM() #control states:beginning, running, ending
+		self.time=0
+		self.distance=10000
+	def process(self,time):
+		self.time+=time
+
+
+
+class Enemy(object):
+	def __init__(self,space,data):
+		self.name='enemy'
+		self.space=space
+		self.data=data
+		self.id=0
+		self.target=self.space.ship
+		self.image=data[0]
+		self.hp=data[1]
+		self.position=data[2]
+		self.speed=data[3]
+		self.damage=data[4]
+		self.bonus=data[5]
+		self.direction=data[6]
+		self.size=Vector2(self.image.get_size())/2 #for convenient
+	def display(self,surface):
+		surface.blit(self.image,self.position-self.size)
+	def move(self,time):
+		self.position+=self.speed*time*self.direction
+	def check(self):
+		#boundary
+		if self.position[0]-self.size.x>=self.space.size.x \
+		or self.position[0]+self.size.x<=0 \
+		or self.position[1]-self.size.y>=self.space.size.y-self.space.panel.size.y:
+			self.space.delete_enemy(self.id)
+		self.collide()
+			
+	def collide(self):
+		distance=(self.position-self.target.position).get_mag()
+		
+		
+		
+	def process(self,time):
+		self.check()
+		self.move(time)
+
+
 		
 #***********Frame of Planet************
 
 class Planet(object):
 	pass
-	
+
+
