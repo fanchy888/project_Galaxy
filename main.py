@@ -35,8 +35,8 @@ gun2=pygame.image.load('gun2.png').convert_alpha()
 gun2_icon=pygame.image.load('gun2_icon.png').convert_alpha()	
 bullet2=pygame.image.load('bullet2.png').convert_alpha()	
 
-gun1_data=[gun,'machine gun',0.2,10,bullet,1000,10,gun_icon,50,100]
-gun2_data=[gun2,'Canon',20,10,bullet2,100,20,gun2_icon,50,50]
+gun1_data=[gun,'machine gun',0.2,1,bullet,1000,10,gun_icon,50,100]
+gun2_data=[gun2,'Canon',3,50,bullet2,500,20,gun2_icon,50,50]
 gun1=Weapon(world,gun1_data)
 gun2=Weapon(world,gun2_data)
 s1.add_weapon(gun1)
@@ -53,6 +53,10 @@ s1.add_shield(shield)
 shield_data=[shield1,2,5,100,1,20]
 shield=Shield(s1,shield_data)
 #s1.add_shield(shield)
+rock=pygame.image.load('rock.png').convert_alpha()
+chap_data=[10000,'rock',1,[rock]]
+chap_test=Chapter(world,chap_data)
+world.set_universe(chap_test)
 while True:
 	screen.fill((200,255,255))
 	buttons=pygame.mouse.get_pressed()
@@ -78,8 +82,9 @@ while True:
 				s1.weapon_id+=1
 			if event.button==5:
 				s1.weapon_id-=1
-		
-		
+			if event.button==3:
+				world.add_enemy(Enemy(world,[rock,50,Vector2(350,0),100,Vector2(0,1),0,0]))
+
 	if s1.weapons and s1.biu:
 		s1.weapon_id=s1.weapon_id%len(s1.weapons)
 		if buttons[0]:
@@ -98,9 +103,13 @@ while True:
 
 	time=clock.tick()	
 	time=time/1000
+
+		
 	world.process(time)
-	world.display(screen)		
+	world.display(screen)
+	pygame.display.flip()	
+'''	
 	if s1.time>=1:
 		print(s1.velocity,' ',s1.distance,' ', s1.tank,' ',e1.gear_id)
 		s1.time=0
-	pygame.display.flip()	
+'''	

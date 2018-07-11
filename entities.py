@@ -7,7 +7,7 @@ import math
 from FSM import *
 from vector import Vector2
 
-space_size=(780,570)
+space_size=Vector2(780,570)
 #********Frame of ship********
 
 class Spacecraft(object):
@@ -27,7 +27,7 @@ class Spacecraft(object):
 		self.tank=1000 #current tank weight
 		self.tank_Max=1000#full tank weight
 		self.fuel=None #energy type and parameters
-		self.shields=[None,None,None] # physical, electromagnetic, dark field
+		self.shields=[None,None,None] # physical, electromagnetic, dark field (equipped or not)
 		self.shieid_id=0					
 		self.routine_power=40 #unit: power
 		self.hold_breath=10 #hp decrement after out of power
@@ -50,12 +50,12 @@ class Spacecraft(object):
 		#flags
 		self.dead=False
 		self.biu=False #fire
-		self.shield_up=[False,False,False] 		
+		self.shield_up=[False,False,False] #turn it on or not(user controls)
 		self.out_of_energy=False #energy
 		self.out_of_power=False #begin lose hp
 		self.disable_weapon=True
 		self.disable_move=False
-		self.disable_shield=[True,True,True]
+		self.disable_shield=[True,True,True] #display and use or not(the ship controls)
 	def add_battery(self,battery):
 		self.battery=battery
 	def add_engine(self,engine):
@@ -260,11 +260,16 @@ class Weapon(object):
 			self.ready=False
 	def shoot(self):
 		self.fire=False
-		self.time=0
-		position=self.position
+		self.time=0		
 		direction=Vector2(pygame.mouse.get_pos())-self.position
 		direction.unit()
-		data=[self.bullet_image, self.bullet_speed, position, self.space, self.bullet_damage, direction]
+		angle=math.asin(direction.x)
+		angle=math.degrees(angle)-180
+		if direction.y<0:
+			angle=180-angle
+		position=self.position+20*direction
+		image_rotate=pygame.transform.rotate(self.bullet_image,angle)
+		data=[image_rotate, self.bullet_speed, position, self.space, self.bullet_damage, direction]
 		self.space.add_bullet(Bullet(data))		
 	def process(self,time):
 		self.time+=time
@@ -302,7 +307,7 @@ class Bullet(object):
 			if self.position[0]>=enemy.position[0]-enemy.image.get_width()/2 \
 			and self.position[0]<=enemy.position[0]+enemy.image.get_width()/2 \
 			and self.position[1]<=enemy.position[1]+enemy.image.get_height()/2 \
-			and self.position[1]<=enemy.position[1]-enemy.image.get_height()/2:
+			and self.position[1]>=enemy.position[1]-enemy.image.get_height()/2:
 				self.space.delete_bullet(self.id)
 				self.space.enemies[enemy.id].hp=max(0,self.space.enemies[enemy.id].hp-self.damage)
 				break		
@@ -319,11 +324,11 @@ class Shield(object):
 		self.hp=data[3]
 		self.effect=data[4] #0~1
 		self.power=data[5]
+		self.ready=True #available for attack
 		if self.type==1:
 			self.charge=data[6]/100 #percent per second 
 			self.icon=data[7]
-			self.radius=(self.image.get_width()+self.image.get_height())/4
-			
+			self.radius=(self.image.get_width()+self.image.get_height())/4			
 	def display(self,surface):		
 		x=int(self.ship.position.x)
 		y=int(self.ship.position.y)
@@ -335,11 +340,20 @@ class Shield(object):
 				surface.blit(self.image,position)
 	def process(self,time):
 		if self.type==1:
-			self.hp+=self.charge*self.hp_max*time
-			
+			if self.hp<self.hp_max:
+				self.ready=False
+				self.hp+=self.charge*self.hp_max*time	
+			else:
+				self.ready=True
+		elif self.type==0:
+			if self.hp<=0:
+				self.ready=False
+			else:
+				self.ready=True
 		self.hp=min(self.hp,self.hp_max)
 		self.hp=max(self.hp,0)
 
+		
 		
 		
 		
@@ -351,7 +365,7 @@ class Space(object):
 		self.background.fill((0,0,0))
 		self.time=0
 		self.size=Vector2(780,720)
-		self.chapter=Chapter(0)
+		self.chapter=None
 		self.position=(0,0)
 		self.panel=None
 		self.ship=None
@@ -361,7 +375,7 @@ class Space(object):
 		self.enemy_id=0
 		self.FSM=FSM()
 		self.stars=[]
-		self.set_universe(Chapter(0))
+		#self.set_universe(Chapter(0))
 	def reset(self):
 		self.enemys={}
 		self.bullets={}
@@ -373,15 +387,16 @@ class Space(object):
 		enemys=self.enemies.copy()
 		bullets=self.bullets.copy()
 		if not self.ship.dead:
-			if random.randint(1,3)==1:
+			if random.randint(0,3)==1:
 				self.set_star()
 			for star in self.stars:
 				star.next_y=star.y+time*star.speed
 			for key in enemys.keys():
-				self.enemys[key].process(time)
+				self.enemies[key].process(time)
 			for key in bullets.keys():
 				self.bullets[key].process(time)
 			self.ship.process(time)
+			self.chapter.process(time)
 			#self.FSM.think()
 
 	def display(self,surface):
@@ -643,13 +658,63 @@ class Panel(object):
 #***********Frame of chapter***********	
 
 class Chapter(object):
-	def __init__(self,data):
-		self.data=data #including distance, enemy info, chapter difficulty(type)
-		self.FSM=FSM() #control states:beginning, running, ending
+	def __init__(self,space,data):
+		self.space=space
+		self.ship=space.ship
+		self.distance=data[0] 
+		self.type=data[1] #rock,army,boss/ difficulty
+		self.difficulty=data[2]
+		self.enemy_list=data[3] #enemy_images
+		self.reset()
+	def reset(self): #set difficulty
 		self.time=0
-		self.distance=10000
+		self.begin=False
+		self.encounter=False
+		self.num=len(self.enemy_list)-1
+		self.start_flag=self.distance/(self.difficulty+10)#percent 0~1
+		self.cd=20/((self.difficulty+1)**2) #x seconds
+		self.ecp=random.random()*self.cd # the point that encounter enemy 
+		self.hp=self.difficulty**2*20
+		self.speed=100+self.difficulty*20
+	def check(self):
+		if not self.begin and self.ship.distance>self.start_flag:
+			self.begin=True
+
+		if self.time>=self.cd: 
+			self.ecp=random.random()*self.cd
+			self.time=0	
+			self.encounter=False
 	def process(self,time):
-		self.time+=time
+		self.check()
+		if self.begin:
+			self.time+=time
+		if not self.encounter and self.time>=self.ecp:
+			self.generate_enemy()
+			self.encounter=True
+			
+	def generate_enemy(self):
+		if self.difficulty:
+			id=random.randint(0,self.num)
+			image=self.enemy_list[id]
+			hp=self.hp+random.randint(0,50)
+			a=random.randint(0,5)
+			position=Vector2(0,0)
+			if a==0:
+				position.x=-image.get_width()/2
+				position.y=random.randint(0,space_size.y/1.5)
+				direction=Vector2(1,random.random())
+			elif a==1:
+				position.x=space_size.x+image.get_width()/2
+				position.y=random.randint(0,space_size.y/1.5)
+				direction=Vector2(-1,random.random())
+			else:	
+				position.x=random.randint(image.get_width()/2,space_size.x-image.get_width()/2)
+				position.y=-image.get_height()/2
+				direction=Vector2(random.uniform(-0.5,0.5),1)				
+			speed=self.speed+random.randint(0,20)
+			data=[image,hp,position,speed,direction,0,0]
+			self.space.add_enemy(Enemy(self.space,data))
+		
 
 
 
@@ -664,30 +729,43 @@ class Enemy(object):
 		self.hp=data[1]
 		self.position=data[2]
 		self.speed=data[3]
-		self.damage=data[4]
-		self.bonus=data[5]
-		self.direction=data[6]
+		self.direction=data[4]
+		self.damage=data[5]
+		self.bonus=data[6]		
+		self.hit=0
 		self.size=Vector2(self.image.get_size())/2 #for convenient
 	def display(self,surface):
 		surface.blit(self.image,self.position-self.size)
 	def move(self,time):
-		self.position+=self.speed*time*self.direction
+		speed=self.speed+self.target.velocity/10
+		self.position+=time*Vector2(self.direction.x*self.speed,self.direction.y*speed)
 	def check(self):
 		#boundary
-		if self.position[0]-self.size.x>=self.space.size.x \
-		or self.position[0]+self.size.x<=0 \
-		or self.position[1]-self.size.y>=self.space.size.y-self.space.panel.size.y:
+		if (self.position[0]-self.size.x>=space_size.x and self.direction.x>0) \
+		or (self.position[0]+self.size.x<=0 and self.direction.x<0) \
+		or (self.position[1]-self.size.y>=space_size.y and self.direction.y>0):
+			self.hp=0
+		if self.hp<=0:
 			self.space.delete_enemy(self.id)
-		self.collide()
-			
+		self.hit=0.5*self.hp*((self.speed+self.target.velocity)/100)**2			
 	def collide(self):
-		distance=(self.position-self.target.position).get_mag()
-		
-		
-		
+		distance=(self.position-self.target.position).get_mag()	
+		if self.target.shield_up[1] and self.target.shields[1].ready:
+			if distance<self.target.shields[1].radius:
+				self.hp-=self.target.shields[1].hp
+				self.target.shields[1].hp-=self.hit
+		if distance<self.target.radius:
+			if self.target.shield_up[0] and self.target.shields[0].ready:
+				self.hp=0
+				self.target.shields[0].hp-=self.hit*self.target.shields[0].effect
+				self.target.hp-=self.hit*(1-self.target.shields[0].effect)	
+			else:
+				self.target.hp-=self.hit
 	def process(self,time):
 		self.check()
 		self.move(time)
+		self.collide()
+		
 
 
 		
