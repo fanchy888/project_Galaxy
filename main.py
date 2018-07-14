@@ -15,12 +15,12 @@ pygame.init()
 ship=pygame.image.load('ship.png').convert_alpha()	
 
 panel_font=pygame.font.SysFont("consolas",18)
-gears=[-1,0,2,4]	
+gears=[-1,0,2,4,10]	
 world=Space()
 panel=Panel(world,panel_font)
 world.add_panel(panel)
 s1=Spacecraft(ship,world)
-e1=Engine(s1,5000,'test',gears,['gas,nuclear,solar'])	
+e1=Engine(s1,500,'test',gears,['gas,nuclear,solar'])	
 b1=Battery(s1,('B1',100,1000))
 s1.add_battery(b1)
 s1.add_engine(e1)
@@ -54,7 +54,7 @@ shield_data=[shield1,2,5,100,1,20]
 shield=Shield(s1,shield_data)
 #s1.add_shield(shield)
 rock=pygame.image.load('rock.png').convert_alpha()
-chap_data=[10000,'rock',1,[rock]]
+chap_data=[100,'rock',0,[rock]]
 chap_test=Chapter(world,chap_data)
 world.set_universe(chap_test)
 while True:
@@ -66,7 +66,7 @@ while True:
 			exit()
 		if event.type==KEYUP: 
 			if event.key==K_LSHIFT:
-				if s1.engine.gear_id<3:
+				if s1.engine.gear_id<len(s1.engine.gear_box)-1:
 					s1.engine.gear_id+=1
 			if event.key==K_LCTRL:
 				if s1.engine.gear_id>0:

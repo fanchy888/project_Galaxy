@@ -119,7 +119,7 @@ class Spacecraft(object):
 
 		self.battery.process(time)	
 		self.consume(time)		
-		self.distance+=self.velocity*time
+		self.distance+=self.velocity*time/1000
 		self.time+=time		
 	def display(self,surface):	
 		surface.blit(self.image,self.position-self.size/2)
@@ -165,7 +165,7 @@ class Battery(object):
 		self.power=data[1]
 		self.output=data[1]
 		self.life_max=data[2]
-		self.life=800 #times
+		self.life=data[2] #times
 		self.percent=100
 		self.decay=5
 		self.ship=ship
@@ -179,7 +179,6 @@ class Battery(object):
 		self.output=max(0,self.output)
 	def repair(self):
 		self.life=self.life_max
-	
 #engine 		
 class Engine(object):
 	def __init__(self,craft,speed,name,gears,fuel_list):
@@ -310,8 +309,7 @@ class Bullet(object):
 			and self.position[1]>=enemy.position[1]-enemy.image.get_height()/2:
 				self.space.delete_bullet(self.id)
 				self.space.enemies[enemy.id].hp=max(0,self.space.enemies[enemy.id].hp-self.damage)
-				break		
-		
+				break			
 #shield		
 class Shield(object):
 	def __init__(self,ship,data):
@@ -352,10 +350,6 @@ class Shield(object):
 				self.ready=True
 		self.hp=min(self.hp,self.hp_max)
 		self.hp=max(self.hp,0)
-
-		
-		
-		
 		
 #********Frame of Space*********	
 	
@@ -545,7 +539,7 @@ class Panel(object):
 			surface.blit(percent,(x+50-percent.get_width()/2,y+1))
 		#weapons
 		x=260
-		y=560
+		y=565
 		if not self.space.ship.disable_weapon:
 			weapon_name=self.space.ship.weapons[self.space.ship.weapon_id].name
 			ammo=self.space.ship.weapons[self.space.ship.weapon_id].ammo
@@ -603,7 +597,7 @@ class Panel(object):
 			x+=60		
 		
 		#shields
-		x=260
+		x=290
 		y=645		
 			#label
 		Text=self.font.render('Shield:',True,(0,0,0))
@@ -639,21 +633,56 @@ class Panel(object):
 				pygame.draw.line(surface,(255,0,0),(x+20-10,y+40-10),(x+20+10,y+40+10),5)
 			pygame.draw.rect(surface,(150,150,150),((x,y+20),box),3)
 			pygame.draw.rect(surface,(220,220,220),((x,y+20),box),2)
-			x+=85
-		#distance remain
-		distance_remain=format(max(0,self.space.chapter.distance-self.space.ship.distance),'0.1f')
-		Distance=self.font.render('Distance:'+str(distance_remain),True,(0,0,0))
-		surface.blit(Distance,self.position+(600,0))		
+			x+=85	
 		#speed
-		x=150
-		y=670
+		x=505
+		y=570
 		v=format(self.space.ship.velocity,'0.1f')
-		Speed=self.font.render('Speed:'+str(v),True,(0,0,0))
-		surface.blit(Speed,self.position+(600,30))		
-		#weight
-		weight=format(self.space.ship.load,'0.1f')
-		Speed=self.font.render('weight:'+str(weight),True,(0,0,0))
-		surface.blit(Speed,self.position+(600,60))			
+		Speed=self.font.render(str(v),True,(172,248,211),1)		
+		Text=self.font.render('Speed:',True,(0,0,0),1)
+		bar=Vector2(120,120)
+		r=bar/2
+		o=Vector2(x+65,y+75)
+		pygame.draw.circle(surface,(172,248,211),o,20,0)
+		pygame.draw.circle(surface,(231,202,127),o,5,0)
+		pygame.draw.circle(surface,(142,229,213),o,20,3)
+		pygame.draw.arc(surface,(172,248,211),(o-r,bar),-math.pi/6,math.pi*7/6,20)
+		pygame.draw.arc(surface,(35,205,182),(o-r,bar),-math.pi/6,math.pi*7/6,1)
+		angle=math.pi*7/6-self.space.ship.velocity/self.space.ship.engine.speed_H*math.pi*4/3		
+		pygame.draw.line(surface,(231,202,127),o,o+50*Vector2(math.cos(angle),-math.sin(angle)),3)
+		for i in range(2,100,2):
+			angle=math.pi*7/6-i*2.4*math.pi/180
+			s=o+59*Vector2(math.cos(angle),-math.sin(angle))			
+			if i%20==0:
+				e=o+50*Vector2(math.cos(angle),-math.sin(angle))
+			elif i%10==0:
+				e=o+53*Vector2(math.cos(angle),-math.sin(angle))
+			else:
+				e=o+55*Vector2(math.cos(angle),-math.sin(angle))
+			pygame.draw.aaline(surface,(35,205,182),s,e,1)
+		bar2=Vector2(70,24)
+		x2=o.x-bar2.x/2
+		y2=y+110
+		pygame.draw.rect(surface,(150,150,150),((x2,y2),bar2),0)
+		surface.blit(Text,(x2-Text.get_width(),y2+2))
+		surface.blit(Speed,(x2+(bar2.x-Speed.get_width())/2,y2+(bar2.y-Speed.get_height())/2))
+		#distance remain
+		x=760
+		y=565
+		distance_remain=format(max(0,self.space.ship.distance),'0.1f')
+		Distance=self.font.render('Mileage:'+str(distance_remain),True,(0,0,0))
+		surface.blit(Distance,(x-Distance.get_width(),y))	
+		bar=(30,100)
+		percent=100-self.space.ship.distance/self.space.chapter.distance*100
+		pygame.draw.rect(surface,(255,215,187),((x-80,y+25),bar),0)
+		pygame.draw.rect(surface,(0,0,0),((x-80,y+25),(3,100)),0)
+		for i in range(5):
+			pygame.draw.line(surface,(0,0,0),(x-80,y+25+i*25),(x-70,y+25+i*25),1)
+		pygame.draw.polygon(surface,(255,76,108),((x-70,y+25+percent),(x-55,y+30+percent),(x-55,y+20+percent)))
+		#time
+		time=format(self.space.time,'0.0f')
+		Speed=self.font.render('Time:'+str(time),True,(0,0,0))
+		surface.blit(Speed,self.position+(700,133))			
 		
 #***********Frame of chapter***********	
 
@@ -714,8 +743,6 @@ class Chapter(object):
 			speed=self.speed+random.randint(0,20)
 			data=[image,hp,position,speed,direction,0,0]
 			self.space.add_enemy(Enemy(self.space,data))
-		
-
 
 
 class Enemy(object):
