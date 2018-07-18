@@ -7,7 +7,7 @@ import math
 from FSM import *
 from vector import Vector2
 
-space_size=Vector2(780,570)
+space_size=Vector2(780,560)
 #********Frame of ship********
 
 class Spacecraft(object):
@@ -55,7 +55,7 @@ class Spacecraft(object):
 		self.out_of_power=False #begin lose hp
 		self.disable_weapon=True
 		self.disable_move=False
-		self.disable_shield=[True,True,True] #display and use or not(the ship controls)
+		self.disable_shield=[True,True,True] #display and use or not(ship controls)
 	def add_battery(self,battery):
 		self.battery=battery
 	def add_engine(self,engine):
@@ -103,12 +103,11 @@ class Spacecraft(object):
 		self.power_require=self.routine_power+self.weapon_power+self.shield_power
 		self.power=min(self.battery.output,self.power_require)	
 		self.load=self.tank+self.weapon_weight+self.shield_weight
-
-	def process(self,time):	
+	def process(self,time):		
 		self.switch_on()
 		self.check()
-		self.engine.work(time)
 		self.move(time)
+		self.engine.work(time)			
 		self.breath(time)
 		if not self.disable_weapon:
 			for weapon in self.weapons:
@@ -116,11 +115,14 @@ class Spacecraft(object):
 		for i in range(len(self.shields)):
 			if not self.disable_shield[i]:
 				self.shields[i].process(time)
+		if not self.space.chapter.complete:
+			self.battery.process(time)	
+			self.consume(time)		
+			self.distance+=self.velocity*time/1000
+			self.distance=min(self.distance,self.space.chapter.distance)
+			self.time+=time	
 
-		self.battery.process(time)	
-		self.consume(time)		
-		self.distance+=self.velocity*time/1000
-		self.time+=time		
+			
 	def display(self,surface):	
 		surface.blit(self.image,self.position-self.size/2)
 		if self.weapons and not self.disable_weapon :
@@ -149,14 +151,13 @@ class Spacecraft(object):
 		if self.disable_shield[1] and self.shields[1]:
 			self.shields[1].hp=0
 		#boundary	
-		if self.position.x>=self.space.size.x-self.size.x/2-10 and self.direction.x==1 \
-		or self.position.x<=self.size.x/2+10 and self.direction.x==-1:
-			self.direction.x=0
-		if self.position.y>=self.space.panel.position.y-self.size.y/2-10 and self.direction.y==1 \
-		or self.position.y<=self.size.y/2+10 and self.direction.y==-1:
-			self.direction.y=0
-
-			
+		if not self.space.chapter.complete:
+			if self.position.x>=self.space.size.x-self.size.x/2-10 and self.direction.x==1 \
+			or self.position.x<=self.size.x/2+10 and self.direction.x==-1:
+				self.direction.x=0
+			if self.position.y>=self.space.panel.position.y-self.size.y/2-10 and self.direction.y==1 \
+			or self.position.y<=self.size.y/2+10 and self.direction.y==-1:
+				self.direction.y=0
 
 #battery
 class Battery(object):
@@ -368,14 +369,17 @@ class Space(object):
 		self.bullet_id=0
 		self.enemy_id=0
 		self.FSM=FSM()
+		self.FSM.add_state(Gameover(self))
+		self.FSM.add_state(Complete(self))
+		self.FSM.add_state(Begin(self))
 		self.stars=[]
-		#self.set_universe(Chapter(0))
 	def reset(self):
+		self.time=0
 		self.enemys={}
 		self.bullets={}
 		self.bullet_id=0
 		self.enemy_id=0
-		#self.panel.reset()
+		self.panel.reset()
 	def process(self,time):
 		self.time+=time
 		enemys=self.enemies.copy()
@@ -391,8 +395,9 @@ class Space(object):
 				self.bullets[key].process(time)
 			self.ship.process(time)
 			self.chapter.process(time)
-			#self.FSM.think()
-
+		self.FSM.think()
+		if self.chapter.complete:
+			self.panel.move(time)
 	def display(self,surface):
 		surface.blit(self.background,(0,0))
 		#awesome background
@@ -434,8 +439,8 @@ class Space(object):
 		del self.bullets[id]			
 	def set_universe(self,chapter):
 		self.reset()
-		self.chapter=chapter
-		
+		self.chapter=chapter	
+		self.FSM.change_state('Begin')
 	def set_star(self):
 		x=random.randint(0,self.size.x)
 		y=0
@@ -453,6 +458,43 @@ class Star(object):
 		self.speed=speed
 		self.next_y=y
 
+#FSM states
+class Begin(State):
+	def __init__(self,space):
+		super().__init__('Begin')
+		self.space=space
+	def check(self):
+		if self.space.chapter.complete:
+			return 'Complete'
+		else:
+			return 'Begin'
+	def start(self):
+		self.space.reset()
+class Complete(State):
+	def __init__(self,space):
+		super().__init__('Complete')
+		self.space=space
+	def start(self):
+		self.space.reset()
+	def check(self):
+		if self.space.time<=3:
+			return 'Gameover'
+		else:
+			return 'Complete'
+	def run(self):
+		self.space.ship.biu=False
+		self.space.ship.shield_up[1]=False
+		self.space.ship.speed+=0.5
+		self.space.panel.speed=50
+		if self.space.ship.position.y>-self.space.ship.size[1]:
+			self.space.ship.direction=Vector2(0,-1)
+		else:
+			self.space.ship.direction=Vector2(0,0)
+			print(self.space.ship.direction)
+class Gameover(State):
+	def __init__(self,space):
+		super().__init__('Gameover')
+		self.space=space	
 #Panel
 class Panel(object):
 	def __init__(self,space,font):
@@ -461,10 +503,14 @@ class Panel(object):
 		self.position=space.size-self.size
 		self.background=pygame.surface.Surface(self.size).convert()
 		self.background.fill((245,245,235))
-		self.speed=50
+		self.speed=0
 		self.font=font
+	def reset(self):
+		self.position=self.space.size-self.size
+		self.speed=0
 	def move(self,time):
-		self.position+=self.speed*Vector2(0,1)
+		if self.position.y<self.space.size.y:
+			self.position+=self.speed*Vector2(0,1)*time
 	def display(self,surface):
 		surface.blit(self.background,self.position)
 		pygame.draw.rect(surface,(150,150,150),(self.position,self.size),5)
@@ -474,9 +520,10 @@ class Panel(object):
 		id=self.space.ship.engine.gear_id
 		bar=(20,110)
 		x=30
-		pygame.draw.rect(surface,(160,238,225),((x,590),bar),0)
+		y=int(self.position.y)+30
+		pygame.draw.rect(surface,(160,238,225),((x,y),bar),0)
 		for i in range(num):
-			y=690-90/(num-1)*i
+			y=int(self.position.y)+130-90/(num-1)*i
 			pygame.draw.rect(surface,(0,0,0),((x+5,y),(10,2)),1)
 			if id==i:
 				pygame.draw.rect(surface,(150,102,73),((x-5,y-3),(30,6)),0)		
@@ -490,7 +537,7 @@ class Panel(object):
 		surface.blit(Gear,self.position+(5,5))
 		#tank
 		x=130
-		y=590
+		y=int(self.position.y)+30
 		percent=self.space.ship.tank/self.space.ship.tank_Max*100
 		bar_back=(100,20)
 		bar_fill=(percent,20)
@@ -502,7 +549,7 @@ class Panel(object):
 		surface.blit(percent,(x+50-percent.get_width()/2,y+1))
 		#battery system
 		x=130
-		y=620
+		y=int(self.position.y)+60
 		percent=self.space.ship.power/self.space.ship.battery.power*100
 		bar_fill=(percent,20)
 		lock=100-self.space.ship.battery.percent*100
@@ -516,7 +563,7 @@ class Panel(object):
 		surface.blit(percent,(x+50-percent.get_width()/2,y+1))	
 		#hp
 		x=130
-		y=650
+		y=int(self.position.y)+90
 		percent=self.space.ship.hp
 		bar_fill=(percent,20)
 		pygame.draw.rect(surface,(255,176,168),((x,y),bar_fill),0)
@@ -528,7 +575,7 @@ class Panel(object):
 		#armor:shield[0]
 		if self.space.ship.shield_up[0]:
 			x=130
-			y=680
+			y=int(self.position.y)+120
 			percent=self.space.ship.shields[0].hp/self.space.ship.shields[0].hp_max*100
 			bar_fill=(percent,20)
 			pygame.draw.rect(surface,(172,248,211),((x,y),bar_fill),0)
@@ -539,7 +586,7 @@ class Panel(object):
 			surface.blit(percent,(x+50-percent.get_width()/2,y+1))
 		#weapons
 		x=260
-		y=565
+		y=int(self.position.y)+5
 		if not self.space.ship.disable_weapon:
 			weapon_name=self.space.ship.weapons[self.space.ship.weapon_id].name
 			ammo=self.space.ship.weapons[self.space.ship.weapon_id].ammo
@@ -598,7 +645,7 @@ class Panel(object):
 		
 		#shields
 		x=290
-		y=645		
+		y=int(self.position.y)+85		
 			#label
 		Text=self.font.render('Shield:',True,(0,0,0))
 		if self.space.ship.shields[1]:
@@ -636,7 +683,7 @@ class Panel(object):
 			x+=85	
 		#speed
 		x=505
-		y=570
+		y=int(self.position.y)+10
 		v=format(self.space.ship.velocity,'0.1f')
 		Speed=self.font.render(str(v),True,(172,248,211),1)		
 		Text=self.font.render('Speed:',True,(0,0,0),1)
@@ -668,7 +715,7 @@ class Panel(object):
 		surface.blit(Speed,(x2+(bar2.x-Speed.get_width())/2,y2+(bar2.y-Speed.get_height())/2))
 		#distance remain
 		x=760
-		y=565
+		y=int(self.position.y)+5
 		distance_remain=format(max(0,self.space.ship.distance),'0.1f')
 		Distance=self.font.render('Mileage:'+str(distance_remain),True,(0,0,0))
 		surface.blit(Distance,(x-Distance.get_width(),y))	
@@ -683,6 +730,7 @@ class Panel(object):
 		time=format(self.space.time,'0.0f')
 		Speed=self.font.render('Time:'+str(time),True,(0,0,0))
 		surface.blit(Speed,self.position+(700,133))			
+
 		
 #***********Frame of chapter***********	
 
@@ -705,6 +753,7 @@ class Chapter(object):
 		self.ecp=random.random()*self.cd # the point that encounter enemy 
 		self.hp=self.difficulty**2*20
 		self.speed=100+self.difficulty*20
+		self.complete=False
 	def check(self):
 		if not self.begin and self.ship.distance>self.start_flag:
 			self.begin=True
@@ -713,6 +762,10 @@ class Chapter(object):
 			self.ecp=random.random()*self.cd
 			self.time=0	
 			self.encounter=False
+		if self.ship.distance>=self.distance:
+			self.complete=True
+		else:
+			self.complete=False
 	def process(self,time):
 		self.check()
 		if self.begin:
@@ -774,7 +827,7 @@ class Enemy(object):
 			self.hp=0
 		if self.hp<=0:
 			self.space.delete_enemy(self.id)
-		self.hit=0.5*self.hp*((self.speed+self.target.velocity)/100)**2			
+		self.hit=0.5*self.hp*((self.speed+self.target.velocity/10)/100)**2			
 	def collide(self):
 		distance=(self.position-self.target.position).get_mag()	
 		if self.target.shield_up[1] and self.target.shields[1].ready:
@@ -796,9 +849,6 @@ class Enemy(object):
 
 
 		
-#***********Frame of Planet************
 
-class Planet(object):
-	pass
 
 

@@ -54,7 +54,7 @@ shield_data=[shield1,2,5,100,1,20]
 shield=Shield(s1,shield_data)
 #s1.add_shield(shield)
 rock=pygame.image.load('rock.png').convert_alpha()
-chap_data=[100,'rock',0,[rock]]
+chap_data=[1,'rock',0,[rock]]
 chap_test=Chapter(world,chap_data)
 world.set_universe(chap_test)
 while True:
@@ -64,7 +64,7 @@ while True:
 	for event in pygame.event.get():	
 		if event.type==QUIT:
 			exit()
-		if event.type==KEYUP: 
+		if event.type==KEYUP and not world.chapter.complete: 
 			if event.key==K_LSHIFT:
 				if s1.engine.gear_id<len(s1.engine.gear_box)-1:
 					s1.engine.gear_id+=1
@@ -91,16 +91,17 @@ while True:
 			s1.weapons[s1.weapon_id].fire=True
 		else:
 			s1.weapons[s1.weapon_id].fire=False
-	s1.direction*=0
-	if keys[K_a] and not keys[K_d]:
-		s1.direction.x=-1
-	if keys[K_d] and not keys[K_a]:
-		s1.direction.x=1
-	if keys[K_w] and not keys[K_s]:
-		s1.direction.y=-1
-	if keys[K_s] and not keys[K_w]:
-		s1.direction.y=1
-
+	
+	if not world.chapter.complete:
+		s1.direction*=0
+		if keys[K_a] and not keys[K_d]:
+			s1.direction.x=-1
+		if keys[K_d] and not keys[K_a]:
+			s1.direction.x=1
+		if keys[K_w] and not keys[K_s]:
+			s1.direction.y=-1
+		if keys[K_s] and not keys[K_w]:
+			s1.direction.y=1
 	time=clock.tick()	
 	time=time/1000
 
@@ -108,8 +109,5 @@ while True:
 	world.process(time)
 	world.display(screen)
 	pygame.display.flip()	
-'''	
-	if s1.time>=1:
-		print(s1.velocity,' ',s1.distance,' ', s1.tank,' ',e1.gear_id)
-		s1.time=0
-'''	
+
+	
