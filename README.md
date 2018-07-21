@@ -1,5 +1,4 @@
 # project_Galaxy
-
 'Shift': gear up 
 'Ctrl' : gear down
 'W A S D': movement
