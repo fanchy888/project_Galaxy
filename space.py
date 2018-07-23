@@ -783,11 +783,11 @@ class Chapter(object):
 			position=Vector2(0,0)
 			if a==0:
 				position.x=-image.get_width()/2
-				position.y=random.randint(0,space_size.y/1.5)
+				position.y=random.randint(0,space_size.y-200)
 				direction=Vector2(1,random.random())
 			elif a==1:
 				position.x=space_size.x+image.get_width()/2
-				position.y=random.randint(0,space_size.y/1.5)
+				position.y=random.randint(0,space_size.y-200)
 				direction=Vector2(-1,random.random())
 			else:	
 				position.x=random.randint(image.get_width()/2,space_size.x-image.get_width()/2)

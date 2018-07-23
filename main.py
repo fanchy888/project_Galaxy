@@ -4,7 +4,7 @@ import pygame
 from pygame.locals import *
 from sys import exit
 import random
-from entities import *
+from space import *
 		
 		
 screen=pygame.display.set_mode((780,720),0,32)
