@@ -6,6 +6,7 @@ import random
 import math
 from FSM import *
 from vector import Vector2
+import commons
 
 space_size=Vector2(780,560)
 #********Frame of ship********
@@ -217,6 +218,7 @@ class Energy(object):
 		self.cost=data[1]
 		self.power=data[2]
 		self.weight=data[3]
+		
 #weapons
 class Weapon(object):
 	def __init__(self,space,data):
@@ -757,7 +759,6 @@ class Chapter(object):
 	def check(self):
 		if not self.begin and self.ship.distance>self.start_flag:
 			self.begin=True
-
 		if self.time>=self.cd: 
 			self.ecp=random.random()*self.cd
 			self.time=0	

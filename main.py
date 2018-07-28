@@ -5,7 +5,7 @@ from pygame.locals import *
 from sys import exit
 import random
 from space import *
-		
+import commons		
 		
 screen=pygame.display.set_mode((780,720),0,32)
 pygame.display.set_caption('biu~~')	
@@ -24,7 +24,7 @@ e1=Engine(s1,500,'test',gears,['gas,nuclear,solar'])
 b1=Battery(s1,('B1',100,1000))
 s1.add_battery(b1)
 s1.add_engine(e1)
-f1=Energy(['gas',1,20,1])	
+f1=Energy([('gas','11'),1,20,1])	
 s1.add_fuel(f1)
 world.ship=s1
 
@@ -46,10 +46,10 @@ shield1=pygame.image.load('shield.png').convert_alpha()
 shield_icon=pygame.image.load('shield_icon.png').convert_alpha()	
 shield_data=[None,0,200,100,0.6,0]
 shield=Shield(s1,shield_data)
-s1.add_shield(shield)
+#s1.add_shield(shield)
 shield_data=[shield1,1,5,1000,1,20,10,shield_icon]
 shield=Shield(s1,shield_data)
-s1.add_shield(shield)
+#s1.add_shield(shield)
 shield_data=[shield1,2,5,100,1,20]
 shield=Shield(s1,shield_data)
 #s1.add_shield(shield)
@@ -57,8 +57,8 @@ rock=pygame.image.load('rock.png').convert_alpha()
 chap_data=[1,'rock',0,[rock]]
 chap_test=Chapter(world,chap_data)
 world.set_universe(chap_test)
-while True:
-	screen.fill((200,255,255))
+
+def flying():
 	buttons=pygame.mouse.get_pressed()
 	keys=pygame.key.get_pressed()	
 	for event in pygame.event.get():	
@@ -83,7 +83,7 @@ while True:
 			if event.button==5:
 				s1.weapon_id-=1
 			if event.button==3:
-				world.add_enemy(Enemy(world,[rock,50,Vector2(350,0),100,Vector2(0,1),0,0]))
+				world.add_enemy(Enemy(world,[rock,50,Vector2(350,0),50,Vector2(0,1),0,0]))
 
 	if s1.weapons and s1.biu:
 		s1.weapon_id=s1.weapon_id%len(s1.weapons)
@@ -103,11 +103,11 @@ while True:
 		if keys[K_s] and not keys[K_w]:
 			s1.direction.y=1
 	time=clock.tick()	
-	time=time/1000
-
-		
+	time=time/1000		
 	world.process(time)
 	world.display(screen)
+while True:
+	flying()
 	pygame.display.flip()	
 
 	
