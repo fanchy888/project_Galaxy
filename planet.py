@@ -76,9 +76,9 @@ class Gas_station(Unit):
 					self.current_type=i
 					self.fuel_id=''
 		else:
-			if cursor.x>200 and cursor.x<250:
+			if cursor.x>200 and cursor.x<200+250:
 				for i in range(1,len(self.energy_list[self.current_type])):
-					if cursor.y>60+i*100 and cursor.y<60+i*100+50:
+					if cursor.y>80+(i-1)*160 and cursor.y<80+(i-1)*160+100:
 						self.fuel_id=self.energy_list[self.current_type][i]
 	def display(self,surface):
 		surface.blit(self.image,self.position)
@@ -93,12 +93,18 @@ class Gas_station(Unit):
 			y+=60
 		x=200
 		y=60
+		bar=Vector2(360,480)
+		pygame.draw.rect(surface,(0,0,0),((x,y),bar),1)
+		x=250
+		y=90
+		bar=Vector2(250,100)
 		for i in range(1,len(self.energy_list[self.current_type])):
 			id=str(self.energy_list[self.current_type][i])
 			id=self.font.render(id,True,(0,0,0))
-			y+=100
-			pygame.draw.rect(surface,(0,0,0),(x,y,50,50),1)
+			pygame.draw.rect(surface,(0,0,0),(x,y,250,100),1)
+			pygame.draw.rect(surface,(200,200,200),(x,y,250,100))
 			surface.blit(id,(x,y))
+			y+=160
 	def process(self):
 		print(self.energy_list[self.current_type][0],self.fuel_id)
 
