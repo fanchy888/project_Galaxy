@@ -21,12 +21,13 @@ class Spacecraft(object):
 		self.weapon_max=4
 		self.weapon_shift=Vector2(0,5)
 		self.speed_max=200
-		self.load_Max=1000
-		self.load=1000
+		self.load_Max=10000 #matter
+		self.load=0
 		self.engine=None #speed range, acceleration
 		self.battery=None #electricity power
-		self.tank=1000 #current tank weight
-		self.tank_Max=1000#full tank weight
+		self.tank=0 #current tank volume
+		self.tank_Max=2000#full tank volume
+		self.tank_weight=0 #weight
 		self.fuel=None #energy type and parameters
 		self.shields=[None,None,None] # physical, electromagnetic, dark field (equipped or not)
 		self.shieid_id=0					
@@ -56,7 +57,7 @@ class Spacecraft(object):
 		self.out_of_power=False #begin lose hp
 		self.disable_weapon=True
 		self.disable_move=False
-		self.disable_shield=[True,True,True] #display and use or not(ship controls)
+		self.disable_shield=[True,True,True] #available or not(ship controls)
 	def add_battery(self,battery):
 		self.battery=battery
 	def add_engine(self,engine):
@@ -64,14 +65,14 @@ class Spacecraft(object):
 	def add_weapon(self,weapon):
 		weapon.id=len(self.weapons)
 		self.weapons.append(weapon)
-		self.weapon_weight+=weapon.weight
 	def add_shield(self,shield):
 		self.shields[shield.type]=shield
-		self.shield_weight+=shield.weight
 	def add_fuel(self,fuel):
 		self.fuel=fuel
-	def fill_tank(self):	
-		self.tank=self.tank_Max
+	def fill_tank(self,amount):	
+		if amount:
+			self.tank=amount
+		self.tank_weight=self.tank*self.fuel.weight
 	def move(self,time):
 		if self.disable_move:
 			self.direction=Vector2(0,0)-self.direction
@@ -83,8 +84,9 @@ class Spacecraft(object):
 		self.hp=max(0,self.hp)
 	def consume(self,time):		
 		transport=self.engine.power*time
-		routine=self.power/self.fuel.power*time*self.fuel.weight 
-		self.tank=max(self.tank-routine-transport,0)		
+		routine=self.power/self.fuel.power*time
+		self.tank=max(self.tank-routine-transport,0)	
+		
 	def switch_on(self):		
 		if self.biu and self.weapons:
 			self.weapon_power=self.weapons[self.weapon_id].power
@@ -103,7 +105,17 @@ class Spacecraft(object):
 				
 		self.power_require=self.routine_power+self.weapon_power+self.shield_power
 		self.power=min(self.battery.output,self.power_require)	
-		self.load=self.tank+self.weapon_weight+self.shield_weight
+		self.calculate()
+	def calculate(self):
+		self.tank_weight=self.tank*self.fuel.weight
+		self.weapon_weight=0
+		for weapon in self.weapons:
+			self.weapon_weight+=weapon.weight
+		self.shield_weight=0
+		for shield in self.shields:
+			if shield:
+				self.shield_weight+=shield.weight
+		self.load=self.tank_weight+self.weapon_weight+self.shield_weight
 	def process(self,time):		
 		self.switch_on()
 		self.check()
@@ -122,8 +134,6 @@ class Spacecraft(object):
 			self.distance+=self.velocity*time/1000
 			self.distance=min(self.distance,self.space.chapter.distance)
 			self.time+=time	
-
-			
 	def display(self,surface):	
 		surface.blit(self.image,self.position-self.size/2)
 		if self.weapons and not self.disable_weapon :
@@ -194,7 +204,6 @@ class Engine(object):
 		self.fuel_type=fuel_list
 		self.acc_rate=100
 		self.keep_rate=1 #lower better
-
 	def work(self,time):
 	#speed
 		if not self.ship.out_of_energy:
@@ -203,21 +212,21 @@ class Engine(object):
 			else:
 				self.a=0	
 		else:
-			self.a=-10
+			self.a=-10-math.sqrt(self.ship.velocity)
 		self.ship.velocity+=self.a*time
 		self.ship.velocity=min(self.ship.velocity,self.speed_H)
 		self.ship.velocity=max(self.ship.velocity,0) #make sure the V is within the range
 	#power			
-		power_acc=abs(self.gear_box[self.gear_id])*self.ship.fuel.weight # each gear consume a constant number of fuel
-		power_keep=((self.ship.velocity/100)**2)*self.keep_rate/self.ship.fuel.power*self.ship.fuel.weight #higher the speed, higher the power to keep the speed
+		power_acc=abs(self.gear_box[self.gear_id]) # each gear consume a constant number of fuel
+		power_keep=((self.ship.velocity/100)**2)*self.keep_rate/self.ship.fuel.power #higher the speed, higher the power to keep the speed
 		self.power=power_acc+power_keep
 # fuel
 class Energy(object):
 	def __init__(self,data):
 		self.type=data[0]
-		self.cost=data[1]
-		self.power=data[2]
-		self.weight=data[3]
+		self.cost=data[1] #per volume
+		self.power=data[2][0] #per volume
+		self.weight=data[2][1] #per volume
 		
 #weapons
 class Weapon(object):
