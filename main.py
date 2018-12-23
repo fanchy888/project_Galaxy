@@ -47,10 +47,10 @@ shield1=pygame.image.load('shield.png').convert_alpha()
 shield_icon=pygame.image.load('shield_icon.png').convert_alpha()	
 shield_data=[None,0,200,100,0.6,0]
 shield=Shield(s1,shield_data)
-#s1.add_shield(shield)
+s1.add_shield(shield)
 shield_data=[shield1,1,5,1000,1,20,10,shield_icon]
 shield=Shield(s1,shield_data)
-#s1.add_shield(shield)
+s1.add_shield(shield)
 shield_data=[shield1,2,5,100,1,20]
 shield=Shield(s1,shield_data)
 #s1.add_shield(shield)
